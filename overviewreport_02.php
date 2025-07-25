@@ -57,6 +57,8 @@ $mDB = new MywebDB();
 $mDB2 = "";
 $mDB2 = new MywebDB();
 
+$mDB3 = "";
+$mDB3 = new MywebDB();
 
 //載入區域
 $Qry = "SELECT region 
@@ -262,6 +264,50 @@ if ($mDB2->rowCount() > 0) {
     }
 }
 
+$Qry3 = "SELECT 
+    h.case_id,
+    f.dispatch_id,
+    i.region,
+    c.builder_id,
+    e.subcontractor_name,
+    f.dispatch_date,
+    g.manpower
+FROM dispatch f
+LEFT JOIN dispatch_construction g ON g.dispatch_id = f.dispatch_id
+LEFT JOIN construction h ON h.construction_id = g.construction_id
+LEFT JOIN CaseManagement i ON i.case_id = h.case_id
+LEFT JOIN overview_building c ON c.case_id = i.case_id
+LEFT JOIN subcontractor e ON e.subcontractor_id = c.builder_id 
+WHERE c.builder_id IS NOT NULL 
+AND i.region IN ($region_list)
+AND e.subcontractor_name IN ($subcontractor_list)
+GROUP BY f.dispatch_id
+
+ORDER BY 
+    CASE 
+        WHEN i.region = '北部' THEN 1 
+        WHEN i.region = '中部' THEN 2 
+        WHEN i.region = '南部' THEN 3 
+        ELSE 4 
+    END";
+
+$month_per_real_manpower_rows = []; // 儲存每個月份的人力資料
+$mDB3->query($Qry3);
+if ($mDB3->rowCount() > 0) {
+    while ($row3 = $mDB3->fetchRow(2)) {
+        $month_per_real_manpower_rows[] = [
+            'region' => $row3['region'],
+            'subcontractor_name' => $row3['subcontractor_name'],
+            'dispatch_date' => $row3['dispatch_date'],
+            'real_manpower' => $row3['manpower'],
+            
+            
+        ];
+    }
+}
+
+
+
 $manpowerByMonth = [];
 $show_inquiry = '';
 
@@ -343,6 +389,7 @@ EOT;
 $first_row = true; // 用來確保 "項目總計" 只出現在第一行
 $second_row = true; // 用來確保 "項目總計" 只出現在第二行
 $third_row = true; // 用來確保 "項目總計" 只出現在第三行
+$real_row = true; // 用來確保 "項目總計" 只出現在第三行
 
 
 
@@ -491,6 +538,8 @@ if ($manpwer_status == '2' || $manpwer_status == '') {
         }
     }
 
+    
+
     // 生成表格數據
     foreach ($manpowerByMonth as $region => $subcontractors) {
         $rowspan = count($subcontractors); // 計算該區域內的包商數量
@@ -512,6 +561,148 @@ if ($manpwer_status == '2' || $manpwer_status == '') {
             if ($second_row) {
                 $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' rowspan='$total_rowspan' style='padding: 10px; background-color: rgb(139, 201, 196);border-bottom : 3px solid black;'><b>自派人力</b></td>";
                 $second_row = false; // 之後的行不再添加這個欄位
+            }
+
+            // 只在該區域的第一個包商列出 `rowspan`
+            if ($first_subcontractor) {
+                $region_colors = [
+                    '北部' => 'rgb(183, 215, 233)',
+                    '中部' => '#D6C3E5',
+                    '南部' => 'rgb(124, 235, 220)'
+                ];
+
+                $color = $region_colors[$region] ?? 'default_color'; // 如果 $region 不在陣列中，可設定預設顏色
+                $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' rowspan='$rowspan' style='padding: 10px; background-color:$color;'><b>$region</b></td>";
+                $first_subcontractor = false; // 之後的包商不再顯示該區域名稱
+            }
+
+            // 加入包商名稱及數據
+            $show_inquiry .= "
+            <td class='size12 bg-aqua text-nowrap' style='padding: 10px;'><b>$subcontractor</b></td>
+            $show_manpower_low
+        </tr>";
+        }
+    }
+    // 首先計算每個區域每個月的人力總和，以及所有區域的每月總計
+    $region_totals = [
+        '北部' => [],
+        '中部' => [],
+        '南部' => []
+    ];
+    $grand_totals = []; // 新增用於儲存所有區域每月總計的陣列
+
+    foreach ($manpowerByMonth as $region => $subcontractors) {
+        foreach ($subcontractors as $subcontractor => $months) {
+            foreach (array_keys($allMonths) as $month) {
+                if (!isset($region_totals[$region][$month])) {
+                    $region_totals[$region][$month] = 0;
+                }
+                if (!isset($grand_totals[$month])) {
+                    $grand_totals[$month] = 0;
+                }
+                $value = isset($months[$month]) ? $months[$month] : 0;
+                $region_totals[$region][$month] += $value;
+                $grand_totals[$month] += $value; // 計算所有區域的總計
+            }
+        }
+    }
+
+    // 在現有的表格生成程式碼之後，在關閉 tbody 之前加入以下內容：
+
+    $show_inquiry .= "<tr style='border-top: 2px solid #000;'>"; // 添加分隔線
+
+    // 添加北部總計
+    $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' colspan='2' style='padding: 2px; background-color: rgb(183, 215, 233);'><b>北部</b></td>";
+    foreach (array_keys($allMonths) as $month) {
+        $north_total = isset($region_totals['北部'][$month]) ? $region_totals['北部'][$month] : 0;
+        $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' style='padding: 2px;'><b>$north_total</b></td>";
+    }
+    $show_inquiry .= "</tr>";
+
+    // 添加中部總計
+    $show_inquiry .= "<tr>";
+
+    $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' colspan='2' style='padding: 2px; background-color: #D6C3E5;'><b>中部</b></td>";
+    foreach (array_keys($allMonths) as $month) {
+        $central_total = isset($region_totals['中部'][$month]) ? $region_totals['中部'][$month] : 0;
+        $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' style='padding: 2px;'><b>$central_total</b></td>";
+    }
+    $show_inquiry .= "</tr>";
+
+    // 添加南部總計
+    $show_inquiry .= "<tr>";
+
+    $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' colspan='2' style='padding: 2px; background-color: rgb(124, 235, 220);'><b>南部</b></td>";
+    foreach (array_keys($allMonths) as $month) {
+        $south_total = isset($region_totals['南部'][$month]) ? $region_totals['南部'][$month] : 0;
+        $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' style='padding: 2px;'><b>$south_total</b></td>";
+    }
+    $show_inquiry .= "</tr>";
+
+    // 添加所有區域的每月總計
+    $show_inquiry .= "<tr style='border-top: 2px solid #000;'>"; // 添加分隔線
+    $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' colspan='2' style='padding: 2px; background-color: #FFD700;border-bottom : 3px solid black;'><b>小計</b></td>";
+    foreach (array_keys($allMonths) as $month) {
+        $grand_total = isset($grand_totals[$month]) ? $grand_totals[$month] : 0;
+        $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' style='padding: 2px; background-color: #FFFFE0;border-bottom : 3px solid black;'><b>$grand_total</b></td>";
+    }
+    $show_inquiry .= "</tr>";
+}
+
+// 實際出工人數
+if ($manpwer_status == '3' || $manpwer_status == '') {
+    $manpowerByMonth = [];
+
+foreach ($month_per_real_manpower_rows as $month_per_real_manpower_row) {
+    $date = new DateTime($month_per_real_manpower_row['dispatch_date']);
+    $monthKey = $date->format('Y-m');
+
+    $regionKey = $month_per_real_manpower_row['region'];
+    $subcontractor_name = $month_per_real_manpower_row['subcontractor_name'];
+
+    if (!isset($manpowerByMonth[$regionKey])) {
+        $manpowerByMonth[$regionKey] = [];
+    }
+
+    if (!isset($manpowerByMonth[$regionKey][$subcontractor_name])) {
+        $manpowerByMonth[$regionKey][$subcontractor_name] = [];
+    }
+
+    if (!isset($manpowerByMonth[$regionKey][$subcontractor_name][$monthKey])) {
+        $manpowerByMonth[$regionKey][$subcontractor_name][$monthKey] = 0;
+    }
+
+    $manpowerByMonth[$regionKey][$subcontractor_name][$monthKey] += (int) $month_per_real_manpower_row['real_manpower'];
+}
+
+$total_rowspan2 = 0;
+    foreach ($manpowerByMonth as $region => $subcontractors) {
+        $total_rowspan2 += count($subcontractors); // 只計算子承包商數量
+    }
+    $total_rowspan2 += 4;
+
+
+    // 生成表格數據
+    foreach ($manpowerByMonth as $region => $subcontractors) {
+        $rowspan = count($subcontractors); // 計算該區域內的包商數量
+        $first_subcontractor = true; // 標記是否為該區域的第一個包商
+
+        foreach ($subcontractors as $subcontractor => $months) {
+            $show_manpower_low = '';
+
+            // 顯示每個月的數據
+            foreach (array_keys($allMonths) as $month) {
+                $show_manpower = isset($months[$month]) ? $months[$month] : 0;
+                $show_manpower_low .= "<td class='size12 bg-aqua text-nowrap' style='padding: 10px;'><b>$show_manpower</b></td>";
+            }
+
+            // 開始新增表格行
+            $show_inquiry .= "<tr>";
+
+
+            if ($real_row) {
+                $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' rowspan='$total_rowspan2' style='padding: 10px; background-color: rgba(110, 241, 143, 1);border-bottom : 3px solid black;'><b>實際出工人力</b></td>";
+                $real_row = false; // 之後的行不再添加這個欄位
             }
 
             // 只在該區域的第一個包商列出 `rowspan`
@@ -749,7 +940,7 @@ $show_inquiry .= '</tbody></table></div>';
 	<div class="size16 weight p-5 text-center">無任何符合查詢的資料</div>
 EOT;
 }
-
+$mDB3->remove();
 $mDB2->remove();
 $mDB->remove();
 
