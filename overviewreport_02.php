@@ -156,7 +156,9 @@ $select_manpwer_status = "<select class=\"inline form-select form-select-sm\" na
 $select_manpwer_status .= "<option value=''></option>";
 $options = [
     '1' => '標準人力',
-    '2' => '自派人力'
+    '2' => '自派人力',
+    '3' => '實際人力',
+    '4' => '人力差額'
 ];
 foreach ($options as $value => $label) {
     $selected = ($value == $selected_manpower) ? "selected" : "";
@@ -394,7 +396,7 @@ $real_row = true; // 用來確保 "項目總計" 只出現在第三行
 
 
 
-if ($manpwer_status == '1' || $manpwer_status == '') {
+if (in_array($manpwer_status, ['1', '', '3', '4'])) {
     // 生成表格數據
     foreach ($manpowerByMonth as $region => $subcontractors) {
         $rowspan = count($subcontractors); // 計算該區域內的包商數量
@@ -506,7 +508,7 @@ if ($manpwer_status == '1' || $manpwer_status == '') {
 
 
 // 自派人力表格
-if ($manpwer_status == '2' || $manpwer_status == '') {
+if (in_array($manpwer_status, ['2', '', '3', '4'])) {
     $manpowerByMonth = [];
 
     foreach ($month_per_manpower_rows as $month_per_manpower_row) {
@@ -650,7 +652,7 @@ if ($manpwer_status == '2' || $manpwer_status == '') {
 }
 
 // 實際出工人數
-if ($manpwer_status == '3' || $manpwer_status == '') {
+if (in_array($manpwer_status, ['3', ''])) {
     $manpowerByMonth = [];
 
 foreach ($month_per_real_manpower_rows as $month_per_real_manpower_row) {
@@ -792,6 +794,8 @@ $total_rowspan2 = 0;
 }
 
 // 人力差額
+// 實際出工人數
+if (in_array($manpwer_status, ['4', ''])) {
 
 $manpowerByMonth = [];
 
@@ -931,6 +935,7 @@ foreach (array_keys($allMonths) as $month) {
     $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' style='padding: 2px; background-color: #FFFFE0;border-bottom : 3px solid black;'><b>$grand_total</b></td>";
 }
 $show_inquiry .= "</tr>";
+}
 
 $show_inquiry .= '</tbody></table></div>';
 
