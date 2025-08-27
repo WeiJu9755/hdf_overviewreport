@@ -364,9 +364,9 @@ $construction_days = ($construction_days < 0) ? '-' : $construction_days;
 $grouting_days = ($grouting_days < 0) ? '-' : $grouting_days;
 
     // 查詢施工人力總數
-    $QryManpower = "SELECT 
+    $Qryworkinghours = "SELECT 
             MIN(a.dispatch_date) AS first_date,
-            COALESCE(SUM(b.manpower), 0) AS total_manpower,
+            COALESCE(SUM(b.workinghours), 0) AS total_workinghours,
             d.company_name
         FROM dispatch a
         LEFT JOIN dispatch_construction b ON a.dispatch_id = b.dispatch_id
@@ -377,19 +377,21 @@ $grouting_days = ($grouting_days < 0) ? '-' : $grouting_days;
             AND b.building = '$building'";
 
     if($company_name != ""){
-        $QryManpower .= " AND d.company_name = '$company_name'";
+        $Qryworkinghours .= " AND d.company_name = '$company_name'";
     }
 
-    $mDB2->query($QryManpower);
-    $total_manpower = 0;
+    $mDB2->query($Qryworkinghours);
+    $total_workinghours = 0;
+    $working_days = 0;
     if ($row2 = $mDB2->fetchRow(2)) {
         $first_date = $row2['first_date'];
-        $total_manpower = $row2['total_manpower'];
+        $total_workinghours = $row2['total_workinghours'];
+        $working_days = round($total_workinghours / 8, 3);
     }
 
     // 查詢灌漿施工人力總數
-    $QryGroutingManpower = "SELECT 
-            COALESCE(SUM(b.manpower), 0) AS total_grouting_manpower
+    $QryGroutingworkinghours = "SELECT 
+            COALESCE(SUM(b.workinghours), 0) AS total_grouting_workinghours
         FROM dispatch a
         LEFT JOIN dispatch_construction b ON a.dispatch_id = b.dispatch_id
         LEFT JOIN construction c ON b.construction_id = c.construction_id
@@ -399,16 +401,18 @@ $grouting_days = ($grouting_days < 0) ? '-' : $grouting_days;
             AND b.building = '$building'";
 
     if($company_name != ""){
-        $QryGroutingManpower .= " AND d.company_name = '$company_name'";
+        $QryGroutingworkinghours .= " AND d.company_name = '$company_name'";
     }
 
-    $mDB2->query($QryGroutingManpower);
-    $total_grouting_manpower = 0;
+    $mDB2->query($QryGroutingworkinghours);
+    $total_grouting_workinghours = 0;
+    $grouting_working_days = 0;
     if ($row2 = $mDB2->fetchRow(2)) {
-        $total_grouting_manpower = $row2['total_grouting_manpower'];
+        $total_grouting_workinghours = $row2['total_grouting_workinghours'];
+        $grouting_working_days = round($total_grouting_workinghours / 8, 3);
     }
-	$work_rate_per_worker = ($total_manpower > 0 && $works_per_floor > 0) ? number_format($works_per_floor / $total_manpower, 2) : '0.00';
-    $work_rate_per_grouting_worker = ($total_grouting_manpower > 0 && $works_per_floor > 0) ? number_format($works_per_floor / $total_grouting_manpower, 2) : '0.00';
+	$work_rate_per_worker = ($working_days > 0 && $works_per_floor > 0) ? number_format($works_per_floor / $working_days, 2) : '0.00';
+    $work_rate_per_grouting_worker = ($grouting_working_days > 0 && $works_per_floor > 0) ? number_format($works_per_floor / $grouting_working_days, 2) : '0.00';
     // 生成表格內容
 	$casereport_list .= <<<EOT
 	<tr>
@@ -422,10 +426,10 @@ $grouting_days = ($grouting_days < 0) ? '-' : $grouting_days;
 		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$start_date</td>
 		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$delivery_date</td>
 		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$construction_days</td>
-		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$total_manpower</td>
+		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$working_days</td>
 		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$construction_end_date</td>
 		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$grouting_days</td>
-		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$total_grouting_manpower</td>
+		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$grouting_working_days</td>
 		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$works_per_floor</td>
 		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$work_rate_per_worker</td>
 		<td class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;">$work_rate_per_grouting_worker</td>
