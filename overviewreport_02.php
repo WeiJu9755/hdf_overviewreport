@@ -155,8 +155,8 @@ $selected_manpower = $_GET['manpwer_status'] ?? '';
 $select_manpwer_status = "<select class=\"inline form-select form-select-sm\" name=\"manpwer_status\" id=\"manpwer_status\" style=\"width:auto;\">";
 $select_manpwer_status .= "<option value=''></option>";
 $options = [
-    '1' => '標準人力',
-    '2' => '自派人力',
+    '1' => '預定標準人力',
+    '2' => '工班可派人力',
     '3' => '實際人力',
     '4' => '人力差額'
 ];
@@ -266,30 +266,30 @@ if ($mDB2->rowCount() > 0) {
     }
 }
 
-$Qry3 = "SELECT 
-    h.case_id,
-    f.dispatch_id,
-    i.region,
-    c.builder_id,
-    e.subcontractor_name,
-    f.dispatch_date,
-    g.manpower
-FROM dispatch f
-LEFT JOIN dispatch_construction g ON g.dispatch_id = f.dispatch_id
-LEFT JOIN construction h ON h.construction_id = g.construction_id
-LEFT JOIN CaseManagement i ON i.case_id = h.case_id
-LEFT JOIN overview_building c ON c.case_id = i.case_id
-LEFT JOIN subcontractor e ON e.subcontractor_id = c.builder_id 
+$Qry3 = "SELECT a.case_id,
+       b.region,
+       a.seq,
+       c.builder_id,
+       e.subcontractor_name,
+       a.engineering_date,
+       a.standard_manpower,
+       a.available_manpower,
+       a.manpower_gap,
+       a.actual_manpower,
+       c.construction_days_per_floor
+       
+        FROM overview_manpower_sub a
+        LEFT JOIN CaseManagement b ON b.case_id = a.case_id
+        LEFT JOIN overview_building c ON c.case_id = a.case_id AND c.seq = a.seq
+        LEFT JOIN subcontractor e ON e.subcontractor_id = c.builder_id
 WHERE c.builder_id IS NOT NULL 
-AND i.region IN ($region_list)
+AND b.region IN ($region_list)
 AND e.subcontractor_name IN ($subcontractor_list)
-GROUP BY f.dispatch_id
-
 ORDER BY 
     CASE 
-        WHEN i.region = '北部' THEN 1 
-        WHEN i.region = '中部' THEN 2 
-        WHEN i.region = '南部' THEN 3 
+        WHEN b.region = '北部' THEN 1 
+        WHEN b.region = '中部' THEN 2 
+        WHEN b.region = '南部' THEN 3 
         ELSE 4 
     END";
 
@@ -300,8 +300,8 @@ if ($mDB3->rowCount() > 0) {
         $month_per_real_manpower_rows[] = [
             'region' => $row3['region'],
             'subcontractor_name' => $row3['subcontractor_name'],
-            'dispatch_date' => $row3['dispatch_date'],
-            'real_manpower' => $row3['manpower'],
+            'engineering_date' => $row3['engineering_date'],
+            'real_manpower' => $row3['actual_manpower'],
             
             
         ];
@@ -331,7 +331,7 @@ for ($i = 0; $i <= $month_count; $i++) {
 $manpowerByMonth = [];
 
 
-// 整理標準人力數據
+// 整理預定標準人力數據
 foreach ($month_per_manpower_rows as $month_per_manpower_row) {
     $start = new DateTime($month_per_manpower_row['engineering_date']);
     $end = new DateTime($month_per_manpower_row['engineering_end_date']);
@@ -416,7 +416,7 @@ if (in_array($manpwer_status, ['1', '', '3', '4'])) {
 
 
             if ($first_row) {
-                $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' rowspan='$total_rowspan' style='padding: 10px; background-color: #FFE7BA;border-bottom : 3px solid black;'><b>標準人力</b></td>";
+                $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' rowspan='$total_rowspan' style='padding: 10px; background-color: #FFE7BA;border-bottom : 3px solid black;'><b>預定標準人力</b></td>";
                 $first_row = false; // 之後的行不再添加這個欄位
             }
 
@@ -507,7 +507,7 @@ if (in_array($manpwer_status, ['1', '', '3', '4'])) {
 
 
 
-// 自派人力表格
+// 工班可派人力表格
 if (in_array($manpwer_status, ['2', '', '3', '4'])) {
     $manpowerByMonth = [];
 
@@ -561,7 +561,7 @@ if (in_array($manpwer_status, ['2', '', '3', '4'])) {
 
 
             if ($second_row) {
-                $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' rowspan='$total_rowspan' style='padding: 10px; background-color: rgb(139, 201, 196);border-bottom : 3px solid black;'><b>自派人力</b></td>";
+                $show_inquiry .= "<td class='size12 bg-aqua text-nowrap' rowspan='$total_rowspan' style='padding: 10px; background-color: rgb(139, 201, 196);border-bottom : 3px solid black;'><b>工班可派人力</b></td>";
                 $second_row = false; // 之後的行不再添加這個欄位
             }
 
@@ -656,7 +656,7 @@ if (in_array($manpwer_status, ['3', ''])) {
     $manpowerByMonth = [];
 
 foreach ($month_per_real_manpower_rows as $month_per_real_manpower_row) {
-    $date = new DateTime($month_per_real_manpower_row['dispatch_date']);
+    $date = new DateTime($month_per_real_manpower_row['engineering_date']);
     $monthKey = $date->format('Y-m');
 
     $regionKey = $month_per_real_manpower_row['region'];
