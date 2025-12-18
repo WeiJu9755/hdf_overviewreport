@@ -256,23 +256,25 @@ while ($row = $mDB->fetchRow(2)) {
 						$delivery_date = $row2['delivery_date'];
 						$deadline_grouting_date = $row2['deadline_grouting_date'];
 
-						if (!empty($delivery_date) && $stakdelivery_datee_date != "0000-00-00") {
-							$day = date('j', strtotime($delivery_date));
+						if (!empty($delivery_date) && $delivery_date != "0000-00-00") {
+							$day = date('Y-m-d', strtotime($delivery_date));
 							$grouting_schedule[$day][] = "$floor 交板";
 						}
 
 						if (!empty($deadline_grouting_date) && $deadline_grouting_date != "0000-00-00") {
-							$day = date('j', strtotime($deadline_grouting_date));
+							$day = date('Y-m-d', strtotime($deadline_grouting_date));
 							$grouting_schedule[$day][] = "$floor 灌漿";
 						}
 					}
 					for ($date = clone $start; $date <= $end; $date->modify('+1 day')) {
-							$formatted_day = $date->format('j');
+							$formatted_day = $date->format('Y-m-d');  // 改這裡
 
 							if (isset($grouting_schedule[$formatted_day])) {
 								$items = implode(' ', $grouting_schedule[$formatted_day]);
-								$bg_color = (strpos($items, '交板') !== false && strpos($items, '灌漿') !== false) ? '#14EC80' :
-											(strpos($items, '交板') !== false ? '#ED7D31' : '#FFFF00');
+								$bg_color = (strpos($items, '交板') !== false && strpos($items, '灌漿') !== false)
+									? '#14EC80'
+									: (strpos($items, '交板') !== false ? '#ED7D31' : '#FFFF00');
+
 								$show_case .= "<td class='text-center text-nowrap vmiddle' style='width:5%;padding: 10px;background-color: $bg_color;'>$items</td>";
 							} else {
 								$show_case .= "<td class='text-center text-nowrap vmiddle' style='width:5%;padding: 10px;'></td>";
@@ -280,6 +282,8 @@ while ($row = $mDB->fetchRow(2)) {
 						}
 
 			$Qry3 = "SELECT DISTINCT 
+						a.seq,
+						d.auto_seq,
 						a.case_id, 
 						a.builder_id, 
 						c.subcontractor_name,
@@ -287,6 +291,7 @@ while ($row = $mDB->fetchRow(2)) {
 						a.eng_description, 
 						a.construction_days_per_floor
 					FROM overview_building a
+					INNER JOIN overview_sub d ON d.auto_seq = a.seq
 					LEFT JOIN CaseManagement b ON a.case_id = b.case_id
 					LEFT JOIN subcontractor c ON a.builder_id = c.subcontractor_id
 					WHERE a.case_id = '$case_id'
