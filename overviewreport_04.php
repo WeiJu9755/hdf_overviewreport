@@ -183,26 +183,29 @@ $show_inquiry = "";
 
 
 //取得案件資料
-$Qry = "SELECT DISTINCT 
-           a.case_id,
-           c.region,
-           c.construction_id AS construction_name,
-           b.engineering_name,
-           e.subcontractor_name,
-           d.building,
-           f.floor,
-           d.scheduled_entry_date,
-           d.actual_entry_date,
-           f.available_manpower,
-           f.standard_manpower,
-           f.engineering_date
+		$Qry = "SELECT DISTINCT 
+            a.case_id,
+            c.region,
+            c.construction_id AS construction_name,
+            b.engineering_name,
+            e.subcontractor_name,
+            d.building,
+            f.floor,
+            d.scheduled_entry_date,
+            d.actual_entry_date,
+            f.available_manpower,
+            f.standard_manpower,
+            f.actual_manpower,
+            f.manpower_gap,
+            f.manpower_type,
+            f.engineering_date
         FROM overview_sub a
         LEFT JOIN construction b ON b.case_id = a.case_id
         LEFT JOIN CaseManagement c ON c.case_id = a.case_id
         LEFT JOIN overview_building d ON d.case_id = a.case_id
         LEFT JOIN subcontractor e ON e.subcontractor_id = d.builder_id
-        LEFT JOIN overview_manpower_sub f ON f.seq = d.seq
-        WHERE f.floor IS NOT NULL";
+        INNER JOIN overview_manpower_sub f ON f.seq = d.seq
+        WHERE 1 = 1";
 
 if (!empty($_GET['start_date']) && !empty($_GET['end_date'])) {
     $start = $_GET['start_date'];
@@ -215,10 +218,10 @@ if (!empty($selected_region)) {
     $Qry .= " AND c.region = '$selected_region'";
 }
 if (!empty($get_construction_dropdown)) {
-    $Qry .= " AND b.construction_id = '$get_construction_dropdown'";
+    $Qry .= " AND c.construction_id  = '$get_construction_dropdown'";
 }
 if (!empty($get_company_name_dropdown)) {
-    $Qry .= " AND d.builder_id = '$get_company_name_dropdown'";
+    $Qry .= " AND e.subcontractor_name = '$get_company_name_dropdown'";
 }
 if (!empty($get_building_dropdown)) {
     $Qry .= " AND d.building = '$get_building_dropdown'";
@@ -250,9 +253,11 @@ if ($mDB->rowCount() > 0) {
 				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">樓層</th>
 				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">預訂進場日</th>
 				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">實際進場日</th>
-				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">標準人力</th>
-				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">可派人力</th>
-				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">實際人力</th>
+				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">預定標準人力</th>
+				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">工班可派人力</th>
+				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">實際出工人力</th>
+				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">人力差額</th>
+				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">人員差異</th>
 			</tr>
 		</thead>
 		<tbody class="table-group-divider">
@@ -270,20 +275,12 @@ EOT;
 		$actual_entry_date = $row['actual_entry_date'];
 		$available_manpower = $row['available_manpower'];
 		$standard_manpower = $row['standard_manpower'];
+		$actual_manpower = $row['actual_manpower'];
+		$manpower_gap	= $row['manpower_gap'];
+		$manpower_type	= $row['manpower_type'];
 		$engineering_date = $row['engineering_date'];
 
-		$Qry2 = "SELECT COALESCE(SUM(b.manpower), 0) AS total_manpower
-				 FROM dispatch a
-				 LEFT JOIN dispatch_construction b ON a.dispatch_id = b.dispatch_id
-				 LEFT JOIN construction c ON b.construction_id = c.construction_id
-				 LEFT JOIN company d ON a.company_id = d.company_id
-				 WHERE DATE(a.dispatch_date) >= '$engineering_date'
-					AND b.floor = '$floor'
-					AND b.building = '$building'";
-		$mDB2->query($Qry2);
-		while ($row2 = $mDB2->fetchRow(2)) {
-			$total_manpower = $row2['total_manpower'];
-		}
+		
 
 		$show_inquiry .= <<<EOT
 			<tr>
@@ -298,7 +295,9 @@ EOT;
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$actual_entry_date</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$standard_manpower</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$available_manpower</td>
-				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$total_manpower</td>
+				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$actual_manpower</td>
+				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$manpower_gap</td>
+				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$manpower_type</td>
 			</tr>
 EOT;
 	}
