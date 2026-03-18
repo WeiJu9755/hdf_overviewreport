@@ -52,6 +52,9 @@ $mDB2 = new MywebDB();
 $mDB3 = "";
 $mDB3 = new MywebDB();
 
+$mDB4 = "";
+$mDB4 = new MywebDB();
+
 
 //載入案件
 $Qry = "SELECT case_id , construction_id FROM CaseManagement WHERE status1 = '已簽約' AND (ContractingModel = '連工帶料(UH)' OR ContractingModel = '代工(WH)')";
@@ -67,7 +70,7 @@ if ($mDB->rowCount() > 0) {
 	while ($row = $mDB->fetchRow(2)) {
 		$ch_case_id = $row['case_id'];
 		$ch_case_name = $row['construction_id'];
-		$select_case .= "<option value='$ch_case_id' " . mySelect($ch_case_id, $case_id) . ">$ch_case_name</option>";
+		$select_case .= "<option value='$ch_case_id' " . mySelect($ch_case_id, $case_id) . "><strong>$ch_case_id</strong> $ch_case_name </option>";
 	}
 }
 $select_case .= "</select>";
@@ -86,9 +89,6 @@ $show_inquiry = "";
 $Qry = "SELECT 
     a.*,  -- 選取 CaseManagement 表中的所有欄位
     b.builder_name,  -- 上包公司名稱
-    b.contact AS builder_contact,  -- 上包公司聯絡人
-	b.tel AS builder_tel,  -- 上包公司電話
-    b.title AS builder_title,  -- 上包公司職稱
     SUM(c.standard_manpower) AS total_standard_manpower,  -- 總標準人力數量 (計算 overview_manpower_sub 表中的標準人力)
     g.employee_name AS maincontractor_pricing_staff,  -- 上包計價人員名稱
     COALESCE(g.mobile_no, g.member_no) AS maincontractor_pricing_staff_mobile, -- 選擇有值的欄位作為上包計價人員的聯絡方式 (手機號碼或會員號碼)
@@ -98,10 +98,7 @@ $Qry = "SELECT
     COALESCE(i.member_no, i.mobile_no) AS responsible_mobile,  -- 工務人員聯絡方式 (會員號碼或手機號碼)
     j.employee_name AS handler_name,  -- 設計人員名稱
     COALESCE(j.member_no, j.mobile_no) AS handler_mobile, -- 選擇有值的欄位作為設計人員的聯絡方式 (會員號碼或手機號碼)
-	k.contractor_name,  -- 營造商名稱
-	k.contact AS contractor_contact,  -- 營造商聯絡人
-	k.title AS contractor_title,  -- 營造商職稱
-    k.tel AS contractor_tel  -- 營造商電話
+	k.contractor_name  -- 營造商名稱
 
 
 FROM CaseManagement a
@@ -173,7 +170,7 @@ FROM CaseManagement a
 LEFT JOIN overview_sub d ON d.case_id = a.case_id  
 LEFT JOIN subcontractor e ON e.subcontractor_id = d.layout 
 WHERE a.status1 = '已簽約' AND a.case_id = '$case_id'
-GROUP BY e.subcontractor_name, d.layout_number, e.contact, e.tel;;
+GROUP BY e.subcontractor_name, d.layout_number, e.contact, e.tel;
 ";
 
 $show_layout = "";
@@ -214,9 +211,8 @@ if ($mDB->rowCount() > 0) {
 		$builder_name = $row['builder_name'];
 		$construction_id = $row['construction_id'];
 		$contractor_name = $row['contractor_name'];
-		$builder_contact = $row['builder_contact'];
-		$builder_tel = $row['builder_tel'];
-		$builder_title = $row['builder_title'];
+		$architect_office = $row['architect_office'];
+		
 		$title = $row['title'];
 		$contractor_tel = $row['contractor_tel'];
 		$ContractingModel = $row['ContractingModel'];
@@ -236,9 +232,95 @@ if ($mDB->rowCount() > 0) {
 		$handler_mobile = $row['handler_mobile'];
 		$location_URL = $row['location_URL'];
 		$contractor_name = $row['contractor_name'];
-		$contractor_title = $row['contractor_title'];
-		$contractor_tel = $row['contractor_tel'];
-		$contractor_contact = $row['contractor_contact'];
+
+		$builder_rows = "";
+		$Qry_builder = "SELECT * FROM case_contacts WHERE organization_type = 'builder' AND case_id = '$case_id'";
+		$mDB4->query($Qry_builder);
+		$b_data = [];
+		while ($row = $mDB4->fetchRow(2)) { $b_data[] = $row; }
+
+		$b_count = count($b_data);
+		if ($b_count > 0) {
+			foreach ($b_data as $i => $row) {
+				$builder_rows .= '<tr class="text-center" style="border-bottom: 1px solid #000;">';
+				if ($i === 0) {
+					$builder_rows .= '<td class="size12" style="padding: 10px;" rowspan="'.$b_count.'">建設公司</td>';
+					$builder_rows .= '<td class="size12" style="padding: 10px;" rowspan="'.$b_count.'">'.$builder_name.'</td>';
+				}
+				$builder_rows .= '<td class="size12" style="padding: 10px;">'.$row['contact_name'].'</td>';
+				$builder_rows .= '<td class="size12" style="padding: 10px;">'.$row['contact_tel'].'</td>';
+				$builder_rows .= '<td class="size12" style="padding: 10px;">'.$row['remark'].'</td></tr>';
+			}
+		}else{
+				$builder_rows .= '<tr class="text-center" style="border-bottom: 1px solid #000;">';
+				$builder_rows .= '<td class="size12" style="padding: 10px;">建設公司</td>';
+				$builder_rows .= '<td class="size12" style="padding: 10px;">'.$builder_name.'</td>';
+				$builder_rows .= '<td class="size12" style="padding: 10px;"></td>'; // 空的聯絡人
+				$builder_rows .= '<td class="size12" style="padding: 10px;"></td>'; // 空的電話
+				$builder_rows .= '<td class="size12" style="padding: 10px;"></td></tr>'; // 空的備註
+		}
+
+		// --- 處理建築師事務所資料 (architect_office) ---
+		$architect_office_rows = "";
+		$Qry_architect_office = "SELECT a.*
+									FROM case_contacts a
+									INNER JOIN CaseManagement b 
+										ON b.architect_office = a.organization_id
+									WHERE a.organization_type = 'architect_office'
+									AND a.case_id = '$case_id'";
+		$mDB4->query($Qry_architect_office);
+		$a_data = [];
+		while ($row = $mDB4->fetchRow(2)) { $a_data[] = $row; }
+
+		$a_count = count($a_data);
+		if ($a_count > 0) {
+			foreach ($a_data as $i => $row) {
+				$architect_office_rows .= '<tr class="text-center" style="border-bottom: 1px solid #000;">';
+				if ($i === 0) {
+					$architect_office_rows .= '<td class="size12" style="padding: 10px;" rowspan="'.$a_count.'">建築師事務所</td>';
+					$architect_office_rows .= '<td class="size12" style="padding: 10px;" rowspan="'.$a_count.'">'.$architect_office.'</td>';
+				}
+				$architect_office_rows .= '<td class="size12" style="padding: 10px;">'.$row['contact_name'].'</td>';
+				$architect_office_rows .= '<td class="size12" style="padding: 10px;">'.$row['contact_tel'].'</td>';
+				$architect_office_rows .= '<td class="size12" style="padding: 10px;">'.$row['remark'].'</td></tr>';
+			}
+		}else{
+				$architect_office_rows .= '<tr class="text-center" style="border-bottom: 1px solid #000;">';
+				$architect_office_rows .= '<td class="size12" style="padding: 10px;">建築師事務所</td>';
+				$architect_office_rows .= '<td class="size12" style="padding: 10px;">'.$architect_office.'</td>';
+				$architect_office_rows .= '<td class="size12" style="padding: 10px;"></td>'; // 聯絡人
+				$architect_office_rows .= '<td class="size12" style="padding: 10px;"></td>'; // 電話
+				$architect_office_rows .= '<td class="size12" style="padding: 10px;"></td></tr>'; // 備註
+		}
+
+		// --- 處理營造公司資料 (Contractor) ---
+		$contractor_rows = "";
+		$Qry_contractor = "SELECT * FROM case_contacts WHERE organization_type = 'contractor' AND case_id = '$case_id'";
+		$mDB4->query($Qry_contractor);
+		$c_data = [];
+		while ($row = $mDB4->fetchRow(2)) { $c_data[] = $row; }
+
+		$c_count = count($c_data);
+		if ($c_count > 0) {
+			foreach ($c_data as $i => $row) {
+				$contractor_rows .= '<tr class="text-center" style="border-bottom: 1px solid #000;">';
+				if ($i === 0) {
+					$contractor_rows .= '<td class="size12" style="padding: 10px;" rowspan="'.$c_count.'">營造公司</td>';
+					$contractor_rows .= '<td class="size12" style="padding: 10px;" rowspan="'.$c_count.'">'.$contractor_name.'</td>';
+				}
+				$contractor_rows .= '<td class="size12" style="padding: 10px;">'.$row['contact_name'].'</td>';
+				$contractor_rows .= '<td class="size12" style="padding: 10px;">'.$row['contact_tel'].'</td>';
+				$contractor_rows .= '<td class="size12" style="padding: 10px;">'.$row['remark'].'</td></tr>';
+			}
+		}else{
+				$contractor_rows .= '<tr class="text-center" style="border-bottom: 1px solid #000;">';
+				$contractor_rows .= '<td class="size12" style="padding: 10px;">營造公司</td>';
+				$contractor_rows .= '<td class="size12" style="padding: 10px;">'.$contractor_name.'</td>';
+				$contractor_rows .= '<td class="size12" style="padding: 10px;"></td>';
+				$contractor_rows .= '<td class="size12" style="padding: 10px;"></td>';
+				$contractor_rows .= '<td class="size12" style="padding: 10px;"></td></tr>';
+		}
+		
 
 
 
@@ -260,18 +342,9 @@ if ($mDB->rowCount() > 0) {
 			<tbody>
 EOT;
 		$show_inquiry .= <<<EOT
-			<tr class="text-center" style="border-bottom: 1px solid #000;">
-				<td class="size12" style="padding: 10px;">建設公司</td>
-				<td class="size12" style="padding: 10px;">$builder_name</td>
-				<td class="size12" style="padding: 10px;">$builder_contact &nbsp $builder_title</td>
-				<td class="size12" style="padding: 10px;">$builder_tel</td>
-			</tr>
-			<tr class="text-center" style="border-bottom: 1px solid #000;">
-				<td class="size12" style="padding: 10px;">營造公司</td>
-				<td class="size12" style="padding: 10px;">$contractor_name</td>
-				<td class="size12" style="padding: 10px;">$contractor_contact &nbsp $contractor_title</td>
-				<td class="size12" style="padding: 10px;">$contractor_tel</td>
-			</tr>
+			$builder_rows
+			$architect_office_rows
+    		$contractor_rows
 			
 			<tr class="text-center" style="border-bottom: 1px solid #000;">
 			<td class="size12" style="padding: 10px;background-color: #FCE4D6;">承攬模式</td>
