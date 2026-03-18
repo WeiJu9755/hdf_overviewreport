@@ -53,8 +53,6 @@ $mDB = new MywebDB();
 $mDB2 = "";
 $mDB2 = new MywebDB();
 
-$mDB3 = "";
-$mDB3 = new MywebDB();
 
 
 //載入區域
@@ -227,8 +225,11 @@ if (!empty($get_building_dropdown)) {
     $Qry .= " AND d.building = '$get_building_dropdown'";
 }
 
-$Qry .= " ORDER BY d.actual_entry_date DESC;";
-
+$Qry .= " ORDER BY 
+            d.actual_entry_date DESC, 
+            (CASE WHEN f.floor LIKE 'R%' THEN 1 ELSE 0 END) ASC,
+            (CASE WHEN f.floor NOT LIKE 'R%' THEN CAST(f.floor AS UNSIGNED) ELSE 0 END) ASC,
+            f.floor ASC;";
 //echo $Qry;
 //exit; 
 
@@ -258,6 +259,8 @@ if ($mDB->rowCount() > 0) {
 				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">實際出工人力</th>
 				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">人力差額</th>
 				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">人員差異</th>
+				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">實際出工總人數</th>
+				<th class="text-center text-nowrap vmiddle" style="width:5%;padding: 10px;background-color: #FCE4D6;">實際出工總天數</th>
 			</tr>
 		</thead>
 		<tbody class="table-group-divider">
@@ -276,10 +279,51 @@ EOT;
 		$available_manpower = $row['available_manpower'];
 		$standard_manpower = $row['standard_manpower'];
 		$actual_manpower = $row['actual_manpower'];
-		$manpower_gap	= $row['manpower_gap'];
+		$manpower_gap = 0 ;
 		$manpower_type	= $row['manpower_type'];
 		$engineering_date = $row['engineering_date'];
 
+		$total_manpower = 0;
+		$total_days = 0;
+		$AVG_actual_manpower = 0;
+		
+		$Qry2 = "SELECT SUM(b.manpower) AS total_manpower
+				   ,COUNT(DISTINCT a.dispatch_date) AS total_days
+				FROM dispatch a
+				LEFT JOIN dispatch_construction b ON b.dispatch_id = a.dispatch_id
+				LEFT JOIN construction c ON c.construction_id = b.construction_id
+				WHERE  c.case_id = '$case_id' 
+								AND a.dispatch_date >='$actual_entry_date'
+								AND b.building = '$building'
+								AND b.floor = '$floor'
+								AND a.ConfirmSending = 'Y'";
+		
+
+		$mDB2->query($Qry2);
+		if ($mDB2->rowCount() > 0) {
+			$row2 = $mDB2->fetchRow(2);
+			$total_manpower = $row2['total_manpower'];
+			$total_days = $row2['total_days'];
+			$AVG_actual_manpower = ($total_days > 0) ? floor($total_manpower / $total_days) : 0;
+			$actual_manpower = $AVG_actual_manpower;
+
+		} else {
+			$total_manpower = 0;
+			$total_days = 0;
+
+		}
+		
+		if ($actual_manpower != 0) {
+				$manpower_gap = $standard_manpower - $actual_manpower;
+			} else {
+				$manpower_gap = $standard_manpower - $available_manpower;
+			}
+
+			// 統一處理負數情況
+			if ($manpower_gap < 0) {
+				$manpower_gap = 0;
+		}
+		
 		
 
 		$show_inquiry .= <<<EOT
@@ -298,6 +342,8 @@ EOT;
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$actual_manpower</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$manpower_gap</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$manpower_type</td>
+				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$total_manpower</td>
+				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$total_days</td>
 			</tr>
 EOT;
 	}
@@ -312,7 +358,7 @@ EOT;
 
 }
 
-$mDB3->remove();
+
 $mDB2->remove();
 $mDB->remove();
 
