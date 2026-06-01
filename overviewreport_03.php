@@ -182,14 +182,16 @@ if(trim($get_company_name_dropdown) === ""){
         a.deadline_grouting_date,
         b.construction_id AS construction_name,
         g.construction_site,
-        SUM(d.works_per_floor) AS works_per_floor
+        a.completed_qty ,
+        c.actual_works_per_floor,
+        '' AS company_name
     FROM pjprogress_sub a
     LEFT JOIN CaseManagement b ON b.case_id = a.case_id
+    LEFT JOIN overview_manpower_sub c ON c.case_id = a.case_id AND c.building = a.building AND c.floor = a.floor
     LEFT JOIN construction g ON g.case_id = a.case_id
-    LEFT JOIN overview_building d ON d.case_id = a.case_id AND d.building = a.building
-    LEFT JOIN subcontractor e ON d.builder_id = e.subcontractor_id
+    
     WHERE a.task_name = '灌漿'
-    AND e.subcontractor_id IS NOT NULL";
+    ";
     
     // 加上條件（統一加條件邏輯）
     if ($get_construction_dropdown !== "") {
@@ -212,9 +214,20 @@ if(trim($get_company_name_dropdown) === ""){
     a.construction_start_date,
     a.construction_end_date,
     a.deadline_grouting_date,
+    a.completed_qty,
+    c.actual_works_per_floor,
     b.construction_id,
     g.construction_site
-ORDER BY a.stake_date DESC";
+ORDER BY
+    b.construction_id ASC,
+    a.building ASC,
+    CASE WHEN a.floor LIKE 'R%' THEN 1 ELSE 0 END ASC,
+    CASE
+        WHEN a.floor LIKE 'R%' THEN CAST(REPLACE(REPLACE(a.floor, 'R', ''), 'F', '') AS UNSIGNED)
+        ELSE CAST(a.floor AS UNSIGNED)
+    END ASC,
+    a.floor ASC,
+    a.stake_date DESC";
 } elseif(trim($get_company_name_dropdown) === "all") {
     // 公司名稱不為空，查詢個別紀錄
     $Qry = "SELECT 
@@ -227,16 +240,18 @@ ORDER BY a.stake_date DESC";
         a.construction_start_date,
         a.construction_end_date,
         a.deadline_grouting_date,
+        a.completed_qty,
+        c.actual_works_per_floor,
         b.construction_id AS construction_name,
         g.construction_site,
-        d.works_per_floor,
-        e.company_id,
-        e.company_name AS company_name
+        e.subcontractor_id AS company_id,
+        e.subcontractor_name AS company_name
     FROM pjprogress_sub a
     LEFT JOIN CaseManagement b ON b.case_id = a.case_id
     LEFT JOIN construction g ON g.case_id = a.case_id
     LEFT JOIN overview_building d ON d.case_id = a.case_id AND d.building = a.building
-    LEFT JOIN company e ON d.builder_id = e.company_id
+    LEFT JOIN overview_manpower_sub c ON c.seq = d.seq AND c.case_id = a.case_id AND c.building = a.building AND c.floor = a.floor
+    LEFT JOIN subcontractor e ON d.builder_id = e.subcontractor_id
     WHERE a.task_name = '灌漿'";
 
     if ($get_construction_dropdown !== "") {
@@ -250,7 +265,16 @@ ORDER BY a.stake_date DESC";
     }
 
     $Qry .= "
-ORDER BY a.stake_date DESC";
+ORDER BY
+    b.construction_id ASC,
+    a.building ASC,
+    CASE WHEN a.floor LIKE 'R%' THEN 1 ELSE 0 END ASC,
+    CASE
+        WHEN a.floor LIKE 'R%' THEN CAST(REPLACE(REPLACE(a.floor, 'R', ''), 'F', '') AS UNSIGNED)
+        ELSE CAST(a.floor AS UNSIGNED)
+    END ASC,
+    a.floor ASC,
+    a.stake_date DESC";
 } else {
     // 公司名稱不為空，查詢個別紀錄
     $Qry = "SELECT 
@@ -263,16 +287,18 @@ ORDER BY a.stake_date DESC";
         a.construction_start_date,
         a.construction_end_date,
         a.deadline_grouting_date,
+        a.completed_qty,
+        c.actual_works_per_floor,
         b.construction_id AS construction_name,
         g.construction_site,
-        d.works_per_floor,
-        e.company_id,
-        e.company_name AS company_name
+        e.subcontractor_id AS company_id,
+        e.subcontractor_name AS company_name
     FROM pjprogress_sub a
     LEFT JOIN CaseManagement b ON b.case_id = a.case_id
     LEFT JOIN construction g ON g.case_id = a.case_id
     LEFT JOIN overview_building d ON d.case_id = a.case_id AND d.building = a.building
-    LEFT JOIN company e ON d.builder_id = e.company_id
+    LEFT JOIN overview_manpower_sub c ON c.seq = d.seq AND c.case_id = a.case_id AND c.building = a.building AND c.floor = a.floor
+    LEFT JOIN subcontractor e ON d.builder_id = e.subcontractor_id
     WHERE a.task_name = '灌漿'";
 
     if ($get_construction_dropdown !== "") {
@@ -285,7 +311,7 @@ ORDER BY a.stake_date DESC";
         $Qry .= " AND a.floor = '$get_floor_dropdown'";
     }
     // 這裡只要直接加上篩選公司名稱
-    $Qry .= " AND e.company_name = '$get_company_name_dropdown'";
+    $Qry .= " AND e.subcontractor_name = '$get_company_name_dropdown'";
 
     $Qry .= " GROUP BY 
     a.stake_date,
@@ -297,9 +323,22 @@ ORDER BY a.stake_date DESC";
     a.construction_start_date,
     a.construction_end_date,
     a.deadline_grouting_date,
+    a.completed_qty,
+    c.actual_works_per_floor,
+    e.subcontractor_id,
+    e.subcontractor_name,
     b.construction_id,
     g.construction_site
-ORDER BY a.stake_date DESC";
+ORDER BY
+    b.construction_id ASC,
+    a.building ASC,
+    CASE WHEN a.floor LIKE 'R%' THEN 1 ELSE 0 END ASC,
+    CASE
+        WHEN a.floor LIKE 'R%' THEN CAST(REPLACE(REPLACE(a.floor, 'R', ''), 'F', '') AS UNSIGNED)
+        ELSE CAST(a.floor AS UNSIGNED)
+    END ASC,
+    a.floor ASC,
+    a.stake_date DESC";
 }
 
 
@@ -354,7 +393,7 @@ while ($row = $mDB->fetchRow(2)) {
     $delivery_date = $row['delivery_date'];
     $construction_start_date = $row['construction_start_date'];
     $construction_end_date = $row['construction_end_date'];
-	$works_per_floor = $row['works_per_floor'];
+	$works_per_floor = (trim($get_company_name_dropdown) === "") ? $row['completed_qty'] : $row['actual_works_per_floor'];
 
     // 計算施工天數
 $construction_days = (strtotime($delivery_date) - strtotime($start_date)) / (60 * 60 * 24) + 1;
@@ -476,6 +515,7 @@ $show_report = <<<EOT
 		<button type="button" class="btn btn-success" onclick="caseselect();"><i class="fas fa-check"></i>&nbsp;查詢</button>
 		</div>
 		</div>
+        <div>$Q</div>
 		<div class="mycell text-end p-2 vbottom" style="width:20%;">
 			<div class="btn-group print"  role="group" style="position:fixed;top: 10px; right:10px;z-index: 9999;">
 				<button id="close" class="btn btn-info btn-lg" type="button" onclick="window.print();"><i class="bi bi-printer"></i>&nbsp;列印</button>
