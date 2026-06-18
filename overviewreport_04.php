@@ -181,55 +181,99 @@ $show_inquiry = "";
 
 
 //取得案件資料
-		$Qry = "SELECT DISTINCT 
+		$Qry = "SELECT
+            a.auto_seq,
             a.case_id,
-            c.region,
-            c.construction_id AS construction_name,
-            b.engineering_name,
+            b.region,
+            b.construction_id AS construction_name,
+            d.engineering_name,
             e.subcontractor_name,
-            d.building,
-            f.floor,
-            d.scheduled_entry_date,
-            d.actual_entry_date,
-            f.available_manpower,
-            f.standard_manpower,
-            f.actual_manpower,
-            f.manpower_gap,
-            f.manpower_type,
-            f.engineering_date
-        FROM overview_sub a
-        LEFT JOIN construction b ON b.case_id = a.case_id
-        LEFT JOIN CaseManagement c ON c.case_id = a.case_id
-        LEFT JOIN overview_building d ON d.case_id = a.case_id
-        LEFT JOIN subcontractor e ON e.subcontractor_id = d.builder_id
-        INNER JOIN overview_manpower_sub f ON f.seq = d.seq
+            c.building,
+            a.floor,
+            a.engineering_date,
+            c.actual_entry_date,
+            c.scheduled_entry_date,
+            c.construction_days_per_floor,
+            c.construction_days_first_floor,
+            a.available_manpower,
+            a.standard_manpower,
+            a.actual_manpower,
+            a.manpower_gap,
+            a.manpower_type,
+            a.date_status,
+            a.seq2,
+            a.actual_works_per_floor,
+            (
+                SELECT COUNT(*)
+                FROM overview_manpower_sub x
+                WHERE x.seq2 = a.seq2
+                  AND x.auto_seq <= a.auto_seq
+            ) - 1 AS floor_index,
+            (
+                SELECT n.engineering_date
+                FROM overview_manpower_sub n
+                WHERE n.seq2 = a.seq2
+                  AND n.auto_seq > a.auto_seq
+                  AND n.date_status = 'Y'
+                  AND n.engineering_date IS NOT NULL
+                  AND n.engineering_date <> ''
+                  AND n.engineering_date <> '0000-00-00'
+                ORDER BY n.auto_seq
+                LIMIT 1
+            ) AS next_actual_entry_date
+        FROM overview_manpower_sub a
+        LEFT JOIN overview_building c ON c.auto_seq = a.seq2
+        LEFT JOIN construction d ON d.case_id = a.case_id
+        LEFT JOIN CaseManagement b ON b.case_id = a.case_id
+        LEFT JOIN subcontractor e ON e.subcontractor_id = c.builder_id
         WHERE 1 = 1";
 
 if (!empty($_GET['start_date']) && !empty($_GET['end_date'])) {
     $start = $_GET['start_date'];
     $end = $_GET['end_date'];
-    $Qry .= " AND d.actual_entry_date >= '$start'";
-    $Qry .= " AND d.actual_entry_date <= '$end'";
+    $Qry .= " AND a.date_status = 'Y'";
+    $Qry .= " AND (
+        (
+            (
+                SELECT COUNT(*)
+                FROM overview_manpower_sub x
+                WHERE x.seq2 = a.seq2
+                  AND x.auto_seq <= a.auto_seq
+            ) = 1
+            AND c.actual_entry_date >= '$start'
+            AND c.actual_entry_date <= '$end'
+        )
+        OR
+        (
+            (
+                SELECT COUNT(*)
+                FROM overview_manpower_sub x
+                WHERE x.seq2 = a.seq2
+                  AND x.auto_seq <= a.auto_seq
+            ) > 1
+            AND a.engineering_date >= '$start'
+            AND a.engineering_date <= '$end'
+        )
+    )";
 }
 
 if (!empty($selected_region)) {
-    $Qry .= " AND c.region = '$selected_region'";
+    $Qry .= " AND b.region = '$selected_region'";
 }
 if (!empty($get_construction_dropdown)) {
-    $Qry .= " AND c.construction_id  = '$get_construction_dropdown'";
+    $Qry .= " AND b.construction_id  = '$get_construction_dropdown'";
 }
 if (!empty($get_company_name_dropdown)) {
     $Qry .= " AND e.subcontractor_name = '$get_company_name_dropdown'";
 }
 if (!empty($get_building_dropdown)) {
-    $Qry .= " AND d.building = '$get_building_dropdown'";
+    $Qry .= " AND c.building = '$get_building_dropdown'";
 }
 
 $Qry .= " ORDER BY 
-            d.actual_entry_date DESC, 
-            (CASE WHEN f.floor LIKE 'R%' THEN 1 ELSE 0 END) ASC,
-            (CASE WHEN f.floor NOT LIKE 'R%' THEN CAST(f.floor AS UNSIGNED) ELSE 0 END) ASC,
-            f.floor ASC;";
+            a.case_id ASC,
+            c.auto_seq ASC,
+            a.auto_seq ASC;";
 //echo $Qry;
 //exit; 
 
@@ -274,43 +318,89 @@ EOT;
 		$subcontractor_name = $row['subcontractor_name'];
 		$building = $row['building'];
 		$floor = $row['floor'];
-		$scheduled_entry_date = $row['scheduled_entry_date'];
+		$engineering_date = $row['engineering_date'];
 		$actual_entry_date = $row['actual_entry_date'];
+		$scheduled_entry_date = $row['scheduled_entry_date'];
+		$construction_days_per_floor = (int) $row['construction_days_per_floor'];
+		$construction_days_first_floor = (int) $row['construction_days_first_floor'];
+		$date_status = $row['date_status'];
+		$seq2 = $row['seq2'];
+		$row_index = (int) $row['floor_index'];
+		$next_actual_entry_date = $row['next_actual_entry_date'];
 		$available_manpower = $row['available_manpower'];
 		$standard_manpower = $row['standard_manpower'];
 		$actual_manpower = $row['actual_manpower'];
 		$manpower_gap = 0 ;
 		$manpower_type	= $row['manpower_type'];
-		$engineering_date = $row['engineering_date'];
+
+		$calculated_scheduled_entry_date = "";
+		if (!empty($scheduled_entry_date) && $scheduled_entry_date != "0000-00-00") {
+			if ($row_index == 0) {
+				$offset_days = 0;
+			} elseif ($row_index == 1) {
+				$offset_days = $construction_days_first_floor;
+			} else {
+				$offset_days = $construction_days_first_floor + (($row_index - 1) * $construction_days_per_floor);
+			}
+			$calculated_scheduled_entry_date = date("Y-m-d", strtotime($scheduled_entry_date . " +{$offset_days} days"));
+		}
+
+		$actual_entry_date_for_row = "";
+		// if ($date_status == "Y") {
+			if ($row_index == 0 && !empty($actual_entry_date) && $actual_entry_date != "0000-00-00") {
+				$actual_entry_date_for_row = $actual_entry_date;
+			} elseif (!empty($engineering_date) && $engineering_date != "0000-00-00") {
+				$actual_entry_date_for_row = $engineering_date;
+			}
+		// }
+
+		$entry_date_display = "—";
+		if (!empty($actual_entry_date_for_row)) {
+			if ($date_status == "Y") {
+			$entry_date_display = $actual_entry_date_for_row . " <span style=\"color:green;\">(實際)</span>";
+			}else{
+				$entry_date_display = $actual_entry_date_for_row . " <span style=\"color:green;\"></span>";
+			}
+		} else {
+			$actual_manpower = 0;
+		}
 
 		$total_manpower = 0;
 		$total_days = 0;
 		$AVG_actual_manpower = 0;
 		
-		$Qry2 = "SELECT SUM(b.manpower) AS total_manpower
+		if (!empty($actual_entry_date_for_row)) {
+			$dispatch_end_condition = "";
+			if (!empty($next_actual_entry_date) && $next_actual_entry_date != "0000-00-00") {
+				$dispatch_end_condition = "AND a.dispatch_date < '$next_actual_entry_date'";
+			}
+
+			$Qry2 = "SELECT SUM(b.manpower) AS total_manpower
 				   ,COUNT(DISTINCT a.dispatch_date) AS total_days
 				FROM dispatch a
 				LEFT JOIN dispatch_construction b ON b.dispatch_id = a.dispatch_id
 				LEFT JOIN construction c ON c.construction_id = b.construction_id
 				WHERE  c.case_id = '$case_id' 
-								AND a.dispatch_date >='$actual_entry_date'
+								AND a.dispatch_date >='$actual_entry_date_for_row'
+								$dispatch_end_condition
 								AND b.building = '$building'
 								AND b.floor = '$floor'
 								AND a.ConfirmSending = 'Y'";
 		
 
-		$mDB2->query($Qry2);
-		if ($mDB2->rowCount() > 0) {
-			$row2 = $mDB2->fetchRow(2);
-			$total_manpower = $row2['total_manpower'];
-			$total_days = $row2['total_days'];
-			$AVG_actual_manpower = ($total_days > 0) ? floor($total_manpower / $total_days) : 0;
-			$actual_manpower = $AVG_actual_manpower;
+			$mDB2->query($Qry2);
+			if ($mDB2->rowCount() > 0) {
+				$row2 = $mDB2->fetchRow(2);
+				$total_manpower = (int) $row2['total_manpower'];
+				$total_days = (int) $row2['total_days'];
+				$AVG_actual_manpower = ($total_days > 0) ? ceil($total_manpower / $total_days) : 0;
+				$actual_manpower = $AVG_actual_manpower;
 
-		} else {
-			$total_manpower = 0;
-			$total_days = 0;
+			} else {
+				$total_manpower = 0;
+				$total_days = 0;
 
+			}
 		}
 		
 		if ($actual_manpower != 0) {
@@ -335,8 +425,8 @@ EOT;
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$subcontractor_name</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$building</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$floor</td>
-				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$scheduled_entry_date</td>
-				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$actual_entry_date</td>
+				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$calculated_scheduled_entry_date</td>
+				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$entry_date_display</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$standard_manpower</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$available_manpower</td>
 				<td class="text-center text-nowrap vmiddle" style="padding: 10px;">$actual_manpower</td>
