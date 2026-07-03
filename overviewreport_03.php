@@ -169,7 +169,7 @@ $casereport_list .= <<<EOT
 		<div class="w-100" style="min-width:1760px;">
 EOT;
 if(trim($get_company_name_dropdown) === ""){
-    // 公司名稱為空，查詢全部有 company_id 的紀錄並進行彙總
+    // 未選下包商：同案、同棟別、同樓層的下包工程量全部加總
     $Qry = "SELECT 
         a.case_id,
         a.task_name,
@@ -182,12 +182,11 @@ if(trim($get_company_name_dropdown) === ""){
         a.deadline_grouting_date,
         b.construction_id AS construction_name,
         g.construction_site,
-        a.completed_qty ,
-        c.actual_works_per_floor,
+        COALESCE(SUM(h.billing_work_qty), 0) AS works_per_floor,
         '' AS company_name
     FROM pjprogress_sub a
     LEFT JOIN CaseManagement b ON b.case_id = a.case_id
-    LEFT JOIN overview_manpower_sub c ON c.case_id = a.case_id AND c.building = a.building AND c.floor = a.floor
+    LEFT JOIN buildingsSUB_sub_detail h ON h.case_id = a.case_id AND h.building = a.building AND h.floor = a.floor
     LEFT JOIN construction g ON g.case_id = a.case_id
     
     WHERE a.task_name = '灌漿'
@@ -214,8 +213,6 @@ if(trim($get_company_name_dropdown) === ""){
     a.construction_start_date,
     a.construction_end_date,
     a.deadline_grouting_date,
-    a.completed_qty,
-    c.actual_works_per_floor,
     b.construction_id,
     g.construction_site
 ORDER BY
@@ -229,7 +226,7 @@ ORDER BY
     a.floor ASC,
     a.stake_date DESC";
 } elseif(trim($get_company_name_dropdown) === "all") {
-    // 公司名稱不為空，查詢個別紀錄
+    // 選擇 all：依下包商分列，並加總該下包商在該樓層的工程量
     $Qry = "SELECT 
         a.case_id,
         a.task_name,
@@ -240,8 +237,7 @@ ORDER BY
         a.construction_start_date,
         a.construction_end_date,
         a.deadline_grouting_date,
-        a.completed_qty,
-        c.actual_works_per_floor,
+        COALESCE(SUM(h.billing_work_qty), 0) AS works_per_floor,
         b.construction_id AS construction_name,
         g.construction_site,
         e.subcontractor_id AS company_id,
@@ -249,9 +245,8 @@ ORDER BY
     FROM pjprogress_sub a
     LEFT JOIN CaseManagement b ON b.case_id = a.case_id
     LEFT JOIN construction g ON g.case_id = a.case_id
-    LEFT JOIN overview_building d ON d.case_id = a.case_id AND d.building = a.building
-    LEFT JOIN overview_manpower_sub c ON c.seq = d.seq AND c.case_id = a.case_id AND c.building = a.building AND c.floor = a.floor
-    LEFT JOIN subcontractor e ON d.builder_id = e.subcontractor_id
+    LEFT JOIN buildingsSUB_sub_detail h ON h.case_id = a.case_id AND h.building = a.building AND h.floor = a.floor
+    LEFT JOIN subcontractor e ON h.subcontractor_id = e.subcontractor_id
     WHERE a.task_name = '灌漿'";
 
     if ($get_construction_dropdown !== "") {
@@ -264,7 +259,20 @@ ORDER BY
         $Qry .= " AND a.floor = '$get_floor_dropdown'";
     }
 
-    $Qry .= "
+    $Qry .= " GROUP BY
+    a.stake_date,
+    a.case_id,
+    a.task_name,
+    a.building,
+    a.floor,
+    a.delivery_date,
+    a.construction_start_date,
+    a.construction_end_date,
+    a.deadline_grouting_date,
+    e.subcontractor_id,
+    e.subcontractor_name,
+    b.construction_id,
+    g.construction_site
 ORDER BY
     b.construction_id ASC,
     a.building ASC,
@@ -276,7 +284,7 @@ ORDER BY
     a.floor ASC,
     a.stake_date DESC";
 } else {
-    // 公司名稱不為空，查詢個別紀錄
+    // 指定下包商：只加總該下包商在該案、棟別、樓層的工程量
     $Qry = "SELECT 
         a.case_id,
         a.task_name,
@@ -287,8 +295,7 @@ ORDER BY
         a.construction_start_date,
         a.construction_end_date,
         a.deadline_grouting_date,
-        a.completed_qty,
-        c.actual_works_per_floor,
+        COALESCE(SUM(h.billing_work_qty), 0) AS works_per_floor,
         b.construction_id AS construction_name,
         g.construction_site,
         e.subcontractor_id AS company_id,
@@ -296,9 +303,8 @@ ORDER BY
     FROM pjprogress_sub a
     LEFT JOIN CaseManagement b ON b.case_id = a.case_id
     LEFT JOIN construction g ON g.case_id = a.case_id
-    LEFT JOIN overview_building d ON d.case_id = a.case_id AND d.building = a.building
-    LEFT JOIN overview_manpower_sub c ON c.seq = d.seq AND c.case_id = a.case_id AND c.building = a.building AND c.floor = a.floor
-    LEFT JOIN subcontractor e ON d.builder_id = e.subcontractor_id
+    LEFT JOIN buildingsSUB_sub_detail h ON h.case_id = a.case_id AND h.building = a.building AND h.floor = a.floor
+    LEFT JOIN subcontractor e ON h.subcontractor_id = e.subcontractor_id
     WHERE a.task_name = '灌漿'";
 
     if ($get_construction_dropdown !== "") {
@@ -323,8 +329,6 @@ ORDER BY
     a.construction_start_date,
     a.construction_end_date,
     a.deadline_grouting_date,
-    a.completed_qty,
-    c.actual_works_per_floor,
     e.subcontractor_id,
     e.subcontractor_name,
     b.construction_id,
@@ -393,7 +397,7 @@ while ($row = $mDB->fetchRow(2)) {
     $delivery_date = $row['delivery_date'];
     $construction_start_date = $row['construction_start_date'];
     $construction_end_date = $row['construction_end_date'];
-	$works_per_floor = (trim($get_company_name_dropdown) === "") ? $row['completed_qty'] : $row['actual_works_per_floor'];
+	$works_per_floor = $row['works_per_floor'] ?? 0;
 
     // 計算施工天數
 $construction_days = (strtotime($delivery_date) - strtotime($start_date)) / (60 * 60 * 24) + 1;
